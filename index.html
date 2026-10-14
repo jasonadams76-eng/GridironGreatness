@@ -624,10 +624,11 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
         <ul class="list final-list">${rows}</ul></section>`;
     }
     const sendCard = guru() ? `<section class="season" aria-label="Challenge a friend"><h2>Challenge a friend</h2>
-        <p class="note">Your friend gets the same teams and decades you were dealt, in Guru mode. When they finish, their team is compared with yours. The text opens in your Messages app and you tap send. Phone numbers are never saved.</p>
+        <p class="note">Your friend gets the same teams and decades you were dealt, in Guru mode. When they finish, their team is compared with yours. The text opens in your Messages app and you tap send. Leave the number blank to choose the contact in Messages. Phone numbers are never saved.</p>
         <div class="confbar"><input id="chName" type="text" placeholder="Your name (optional)" maxlength="20" aria-label="Your name"></div>
-        <div class="confbar"><input id="chPhone" type="tel" inputmode="tel" placeholder="Friend's phone number" aria-label="Friend's phone number"></div>
+        <div class="confbar"><input id="chPhone" type="tel" inputmode="tel" placeholder="Friend's phone number (optional)" aria-label="Friend's phone number"><button class="ghost" id="chPick" type="button" hidden>Contacts</button></div>
         <div class="final-actions"><button class="primary" id="chSms" type="button">Text the challenge</button>
+        <button class="ghost" id="chShare" type="button" hidden>Share…</button>
         <button class="ghost" id="chCopy" type="button">Copy link</button>
         <button class="ghost" id="chCode2" type="button">Copy code</button></div>
         <p class="note" id="chMsg"></p></section>` : '';
@@ -660,15 +661,32 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
         r: SLOTS.map((x) => { const k = st.picks[x.id]; return [x.id, k.name, k.pos, k.season, k.r, k.team, k.dec]; }) });
       const base = () => location.href.split('#')[0];
       const link = () => base() + '#c=' + payload();
+      const msg = (who, l) => `${who ? who + ' is' : "I'm"} challenging you in Gridiron Greatness (Guru mode). Same teams and decades, build your best roster and see who wins: ${l}`;
+      if (navigator.share) {
+        $('chShare').hidden = false;
+        $('chShare').onclick = async () => {
+          try { await navigator.share({ title: 'Gridiron Greatness challenge', text: msg(($('chName').value || '').trim(), '').replace(/: $/, ''), url: link() }); }
+          catch (e) { if (e && e.name !== 'AbortError') say('Sharing is not available here. Use Copy link instead.'); }
+        };
+      }
+      if (navigator.contacts && navigator.contacts.select && window.isSecureContext && window.top === window) {
+        $('chPick').hidden = false;
+        $('chPick').onclick = async () => {
+          try {
+            const r = await navigator.contacts.select(['tel'], { multiple: false });
+            if (r && r[0] && r[0].tel && r[0].tel[0]) $('chPhone').value = r[0].tel[0];
+          } catch (e) { say('Could not open your contacts. Type the number or leave it blank.'); }
+        };
+      }
       const say = (m) => { $('chMsg').textContent = m; };
       const copy = async (txt, ok) => { try { await navigator.clipboard.writeText(txt); say(ok); } catch (e) { say('Copy is not available here.'); } };
       $('chCopy').onclick = () => copy(link(), 'Link copied.');
       $('chCode2').onclick = () => copy(payload(), 'Code copied. Your friend can paste it under "Have a challenge code?" on the start screen.');
       $('chSms').onclick = () => {
         const num = ($('chPhone').value || '').replace(/[^\d+]/g, '');
-        if (num.replace(/\D/g, '').length < 7) { say('Enter your friend\'s phone number first.'); return; }
+        if (num && num.replace(/\D/g, '').length < 7) { say('That phone number looks too short. Fix it or leave it blank.'); return; }
         const who = ($('chName').value || '').trim();
-        const body = `${who ? who + ' is' : "I'm"} challenging you in Gridiron Greatness (Guru mode). Same teams and decades, build your best roster and see who wins: ${link()}`;
+        const body = msg(who, link());
         const ios = /iP(hone|ad|od)/.test(navigator.userAgent);
         location.href = `sms:${num}${ios ? '&' : '?'}body=${encodeURIComponent(body)}`;
         say('Opening your Messages app. Tap send there.');
