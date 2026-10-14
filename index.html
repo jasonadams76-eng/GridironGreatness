@@ -176,7 +176,7 @@ input[type=text], input[type=tel] { flex: 1; min-width: 0; min-height: 44px; pad
       <path d="M30 1.5 L42 1.5 L36 11 Z" fill="#FFFFFF"/>
     </svg>
     <div class="word">
-      <h1><span>Gridiron <small class="ver" title="Version">v1.2</small></span><span>Greatness</span></h1>
+      <h1><span>Gridiron <small class="ver" title="Version">v1.4</small></span><span>Greatness</span></h1>
       <p class="tagline">Test your knowledge of college football over the last 25 years.</p>
     </div>
   </header>
@@ -273,7 +273,11 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   }
   const lastKey = (n) => { const w = String(n).trim().split(/\s+/); return (w[w.length - 1] + ' ' + w[0]).toLowerCase(); };
   const CONFS = Array.from(new Set(TEAMS.map((t) => t.conf).filter((c) => c && c !== 'FBS Independents'))).sort();
-  const pool = () => (conf === 'ALL' ? TEAMS : TEAMS.filter((t) => t.conf === conf));
+  const POWER = ['SEC', 'Big Ten', 'Big 12', 'ACC'];     // the "Power conferences" filter (plus Notre Dame)
+  const isPower = (t) => POWER.includes(t.conf) || t.name === 'Notre Dame';
+  const confLabel = (c) => (c === 'POWER' ? 'Power conferences' : c === 'NONPOWER' ? 'Non-Power conferences' : c);
+  const pool = () => (conf === 'ALL' ? TEAMS : conf === 'POWER' ? TEAMS.filter(isPower)
+    : conf === 'NONPOWER' ? TEAMS.filter((t) => !isPower(t)) : TEAMS.filter((t) => t.conf === conf));
   function fresh() { st = { seq: {}, confLocked: !!chal, rerolls: 3, picks: {}, slot: null, team: null, dec: null, cands: [], filter: 'ALL', sel: null, phase: 'spin', busy: false }; }
 
   const tier = (r) => (r >= 90 ? 't-elite' : r >= 80 ? 't-great' : r >= 70 ? 't-good' : r >= 60 ? 't-mid' : 't-low');
@@ -356,7 +360,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   function renderSpin() {
     const stage = $('stage');
     const cb = chal ? `<section class="season" aria-label="Challenge"><h2>Challenge${chal.n ? ' from ' + esc(chal.n) : ''}</h2>
-      <p class="note">Same teams and decades as the ones ${chal.n ? esc(chal.n) + ' was' : 'your friend was'} dealt, Guru level, ${chal.c && chal.c !== 'ALL' ? esc(chal.c) + ' only' : 'all conferences'}. Draft your own players. At the end your team is compared to theirs.</p></section>`
+      <p class="note">Same teams and decades as the ones ${chal.n ? esc(chal.n) + ' was' : 'your friend was'} dealt, Guru level, ${chal.c && chal.c !== 'ALL' ? esc(confLabel(chal.c)) + ' only' : 'all conferences'}. Draft your own players. At the end your team is compared to theirs.</p></section>`
       : (Object.keys(st.picks).length === 0 ? `<details class="chalin"><summary>Have a challenge code?</summary>
       <div class="confbar"><input id="chCode" type="text" placeholder="Paste the code or link" aria-label="Challenge code"><button class="ghost" id="chGo" type="button">Start</button></div>
       <p class="note" id="chErr"></p></details>` : '');
@@ -366,7 +370,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
         <button type="button" data-l="guru" aria-pressed="${level === 'guru'}">Guru</button></div></div>
       <p class="note lvlnote" id="lvlNote"></p>
       <div class="confbar"><label for="confSel">Conference</label>
-      <select id="confSel"><option value="ALL">All conferences</option>${CONFS.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
+      <select id="confSel"><option value="ALL">All conferences</option><option value="POWER">Power conferences (SEC, Big Ten, Big 12, ACC, Notre Dame)</option><option value="NONPOWER">Non-Power conferences</option>${CONFS.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
       <div class="spin" id="spin">
       <div class="reel" id="teamReel">${reelHTML('Team', '— — —', '')}</div>
       <div class="reel" id="decReel">${reelHTML('Decade', '—', '')}</div>
