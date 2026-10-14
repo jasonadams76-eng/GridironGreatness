@@ -93,6 +93,16 @@ h1 i { font-style: normal; color: var(--gold); }
 .primary:disabled { opacity: .4; cursor: default; }
 .ghost { min-height: 46px; padding: 0 16px; border-radius: 12px; border: 1.5px solid #3C3C45; background: transparent; font-weight: 600; }
 .reroll { grid-column: 1 / -1; width: 100%; min-height: 48px; }
+.rr2 { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rr2 { margin-bottom: 8px; }
+.rr2 .reroll { grid-column: auto; min-width: 0; width: 100%; min-height: 42px; padding: 4px 6px; font-size: .8rem; line-height: 1.15; }
+button.slot { display: block; text-align: left; width: 100%; font: inherit; cursor: pointer; }
+button.slot.filled { color: var(--on); }
+button.slot:disabled { cursor: default; }
+.slot.filled.sel { box-shadow: 0 0 0 2px var(--gold); }
+.slot.empty.rolled { border-style: solid; border-color: #55555F; }
+.submitbar { display: flex; flex-direction: column; gap: 8px; }
+.submitbar .note { margin: 0; }
 .reroll:disabled { opacity: .45; cursor: default; }
 
 .picker { --team: var(--gold); display: flex; flex-direction: column; gap: 10px; }
@@ -110,7 +120,7 @@ h1 i { font-style: normal; color: var(--gold); }
 .best.hit { color: #7BD88F; }
 .lvlnote { margin: -4px 0 12px; }
 .list.blind .row { grid-template-columns: minmax(0, 1fr); }
-.confbar select { flex: 1; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1.5px solid #3C3C45; background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; }
+.confbar select { flex: 1; min-width: 0; max-width: 100%; text-overflow: ellipsis; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1.5px solid #3C3C45; background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; }
 .confbar select:disabled { opacity: .5; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .filter { min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1.5px solid #3C3C45; background: transparent; font-weight: 600; font-size: .85rem; }
@@ -176,7 +186,7 @@ input[type=text], input[type=tel] { flex: 1; min-width: 0; min-height: 44px; pad
       <path d="M30 1.5 L42 1.5 L36 11 Z" fill="#FFFFFF"/>
     </svg>
     <div class="word">
-      <h1><span>Gridiron <small class="ver" title="Version">v1.4</small></span><span>Greatness</span></h1>
+      <h1><span>Gridiron <small class="ver" title="Version">v1.5.1</small></span><span>Greatness</span></h1>
       <p class="tagline">Test your knowledge of college football over the last 25 years.</p>
     </div>
   </header>
@@ -278,7 +288,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   const confLabel = (c) => (c === 'POWER' ? 'Power conferences' : c === 'NONPOWER' ? 'Non-Power conferences' : c);
   const pool = () => (conf === 'ALL' ? TEAMS : conf === 'POWER' ? TEAMS.filter(isPower)
     : conf === 'NONPOWER' ? TEAMS.filter((t) => !isPower(t)) : TEAMS.filter((t) => t.conf === conf));
-  function fresh() { st = { seq: {}, confLocked: !!chal, rerolls: 3, picks: {}, slot: null, team: null, dec: null, cands: [], filter: 'ALL', sel: null, phase: 'spin', busy: false }; }
+  function fresh() { st = { seq: {}, rolls: {}, rr: { t: 3, d: 3 }, confLocked: !!chal, picks: {}, slot: null, team: null, dec: null, cands: [], filter: 'ALL', sel: null, busy: false }; }
 
   const tier = (r) => (r >= 90 ? 't-elite' : r >= 80 ? 't-great' : r >= 70 ? 't-good' : r >= 60 ? 't-mid' : 't-low');
   function lum(hex) {
@@ -294,8 +304,8 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   // Returns a test for "can this player be drafted now": an open slot takes the position and he is not already on the roster.
   function availFn() {
     const sl = st.slot && SLOTS.find((x) => x.id === st.slot);
-    const pos = new Set(sl ? sl.accepts : open().flatMap((s) => s.accepts));
-    const names = new Set(Object.values(st.picks).map((k) => k.name));
+    const pos = new Set(sl ? sl.accepts : SLOTS.flatMap((s) => s.accepts));
+    const names = new Set(Object.entries(st.picks).filter(([id]) => id !== st.slot).map(([, k]) => k.name));
     return (p) => pos.has(p[1]) && !names.has(p[0]);
   }
 
@@ -307,16 +317,17 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
 
   function syncSpin() {
     const b = $('spinBtn');
-    if (!b || st.phase !== 'spin') return;
+    if (!b) return;
     const sl = st.slot && SLOTS.find((x) => x.id === st.slot);
+    b.hidden = !!(sl && st.rolls[sl.id]) || (!sl && open().length === 0);
     b.disabled = !sl || st.busy;
-    b.textContent = sl ? `Spin for ${sl.label}` : 'Spin';
+    b.textContent = sl ? `Spin for ${sl.label}` : 'Choose Position';
   }
 
   function syncLevel() {
     const g = $('lvl');
     if (!g) return;
-    const locked = !!chal || open().length < SLOTS.length || st.phase === 'pick' || st.busy;
+    const locked = !!chal || Object.keys(st.rolls).length > 0 || st.busy;
     g.querySelectorAll('button').forEach((b) => { b.disabled = locked; b.setAttribute('aria-pressed', String(b.dataset.l === level)); });
     $('lvlNote').textContent = guru()
       ? 'Guru: no ratings or stats while you pick, and players are listed A to Z. Trust your football brain.'
@@ -326,22 +337,23 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   function renderBoard() {
     syncLevel();
     const o = open();
-    if (!st.slot && o.length) st.slot = o[0].id;   // slots fill in order, QB first and D/ST last
     const slotHTML = (s) => {
-      const k = st.picks[s.id];
+      const k = st.picks[s.id], roll = st.rolls[s.id], on = st.slot === s.id;
+      const attrs = `type="button" data-s="${s.id}" aria-pressed="${on}"${st.busy ? ' disabled' : ''}`;
       if (!k) {
-        const on = st.slot === s.id;
-        return `<div class="slot empty${on ? ' sel' : ''}"${on ? ' aria-current="true"' : ''}><span class="p">${s.label}</span>${s.accepts.length > 1 ? '<span class="sub">RB \u00b7 WR \u00b7 TE</span>' : ''}</div>`;
+        const hint = roll ? `${roll.team.name} ${roll.dec}` : (s.accepts.length > 1 ? 'RB \u00b7 WR \u00b7 TE' : '');
+        return `<button class="slot empty${on ? ' sel' : ''}${roll ? ' rolled' : ''}" ${attrs}><span class="p">${s.label}</span>${hint ? `<span class="sub">${esc(hint)}</span>` : ''}</button>`;
       }
       const dst = k.pos === 'DST';
       const nm = dst ? k.team : shortName(k.name);
       const sub = dst ? `${k.season} defense` : `${s.accepts.length > 1 ? k.pos + ' \u00b7 ' : ''}${k.team} ${k.season}`;
-      return `<div class="slot filled${k.r >= 90 && !guru() ? ' elite' : ''}" style="--c1:${k.c1};--on:${onColor(k.c1)};--c2:${borderFor(k.c1, k.c2)}"><span class="p">${s.label}</span>
+      return `<button class="slot filled${on ? ' sel' : ''}${k.r >= 90 && !guru() ? ' elite' : ''}" ${attrs} style="--c1:${k.c1};--on:${onColor(k.c1)};--c2:${borderFor(k.c1, k.c2)}"><span class="p">${s.label}</span>
         <span class="who"><span class="nm" title="${esc(k.name)}">${esc(nm)}</span><span class="sub">${esc(sub)}</span></span>
-        ${guru() ? '' : `<span class="chip ${tier(k.r)}">${k.r}</span>`}</div>`;
+        ${guru() ? '' : `<span class="chip ${tier(k.r)}">${k.r}</span>`}</button>`;
     };
     $('board').innerHTML = ['L', 'R'].map((side) => `<div class="side">${
       SLOTS.filter((s) => s.side === side).map(slotHTML).join('')}</div>`).join('');
+    document.querySelectorAll('#board .slot').forEach((b) => { b.onclick = () => selectSlot(b.dataset.s); });
     syncSpin();
     $('progress').innerHTML = `<b>${SLOTS.length - o.length}</b> / ${SLOTS.length}`;
   }
@@ -351,7 +363,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     let style = '';
     if (fit) {
       const L = Math.max(...String(val).split(' ').map((w) => w.length));
-      const size = L >= 12 ? '1.3rem' : L >= 10 ? '1.55rem' : L >= 8 ? '1.85rem' : '';
+      const size = L >= 12 ? '1.2rem' : L >= 10 ? '1.4rem' : L >= 8 ? '1.6rem' : '';
       if (size) style = ` style="font-size:${size}"`;
     }
     return `<div class="lab">${lab}</div><div class="val"${style}>${esc(val)}</div><div class="sub">${esc(sub || '')}</div>`;
@@ -361,7 +373,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     const stage = $('stage');
     const cb = chal ? `<section class="season" aria-label="Challenge"><h2>Challenge${chal.n ? ' from ' + esc(chal.n) : ''}</h2>
       <p class="note">Same teams and decades as the ones ${chal.n ? esc(chal.n) + ' was' : 'your friend was'} dealt, Guru level, ${chal.c && chal.c !== 'ALL' ? esc(confLabel(chal.c)) + ' only' : 'all conferences'}. Draft your own players. At the end your team is compared to theirs.</p></section>`
-      : (Object.keys(st.picks).length === 0 ? `<details class="chalin"><summary>Have a challenge code?</summary>
+      : (Object.keys(st.rolls).length === 0 ? `<details class="chalin"><summary>Have a challenge code?</summary>
       <div class="confbar"><input id="chCode" type="text" placeholder="Paste the code or link" aria-label="Challenge code"><button class="ghost" id="chGo" type="button">Start</button></div>
       <p class="note" id="chErr"></p></details>` : '');
     stage.innerHTML = cb + `<div class="confbar"><label>Level</label>
@@ -371,27 +383,31 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
       <p class="note lvlnote" id="lvlNote"></p>
       <div class="confbar"><label for="confSel">Conference</label>
       <select id="confSel"><option value="ALL">All conferences</option><option value="POWER">Power conferences (SEC, Big Ten, Big 12, ACC, Notre Dame)</option><option value="NONPOWER">Non-Power conferences</option>${CONFS.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
+      <div class="submitbar" id="submitBar"><p class="note" id="hint"></p><button class="primary" id="submitBtn" type="button" hidden>Submit lineup</button></div>
       <div class="spin" id="spin">
       <div class="reel" id="teamReel">${reelHTML('Team', '— — —', '')}</div>
       <div class="reel" id="decReel">${reelHTML('Decade', '—', '')}</div>
       <button class="primary" id="spinBtn" type="button">Spin</button>
-      <button class="ghost reroll" id="rerollBtn" type="button" hidden></button></div>
+      <div class="rr2"><button class="ghost reroll" id="rerollBtn" type="button" hidden></button>
+      <button class="ghost reroll" id="rerollDecBtn" type="button" hidden></button></div></div>
       <div id="pickerHost"></div>`;
     document.querySelectorAll('#lvl button').forEach((b) => { b.onclick = () => { level = b.dataset.l; renderBoard(); renderSpin(); }; });
     syncLevel();
     const cs = $('confSel');
     cs.value = conf;
     cs.disabled = !!st.confLocked;
-    cs.onchange = () => { conf = cs.value; updateReroll(); };
+    cs.onchange = () => { conf = cs.value; };
     $('spinBtn').onclick = spin;
-    syncSpin();
     $('rerollBtn').onclick = rerollTeam;
+    $('rerollDecBtn').onclick = rerollDec;
+    $('submitBtn').onclick = () => { if (open().length === 0 && !st.busy) renderFinal(); };
     if ($('chGo')) $('chGo').onclick = () => {
       const o = b64d($('chCode').value);
       if (!o) { $('chErr').textContent = 'That code did not work. Check that you pasted all of it.'; return; }
       if (o.k === 'res') { showReply(o); return; }
       acceptChallenge(o); start();
     };
+    paintSlot();
   }
 
   function paintTeam(t) {
@@ -418,16 +434,31 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   const candsFor = (team, dec) => (team.d[dec] || []).filter(availFn())
     .sort((x, y) => y[3] - x[3] || y[2] - x[2]);
 
-  function canReroll() {
-    if (st.busy || st.rerolls <= 0 || st.phase !== 'pick') return false;
-    return pool().some((t) => t !== st.team && candsFor(t, st.dec).length);
-  }
+  const canTeam = () => {
+    const r = st.slot && st.rolls[st.slot];
+    return !!r && !st.busy && st.rr.t > 0 && pool().some((t) => t !== r.team && candsFor(t, r.dec).length);
+  };
+  const canDec = () => {
+    const r = st.slot && st.rolls[st.slot];
+    return !!r && !st.busy && st.rr.d > 0 && DECS.some((d) => d !== r.dec && candsFor(r.team, d).length);
+  };
   function updateReroll() {
-    const b = $('rerollBtn');
-    if (!b) return;
-    b.hidden = st.phase !== 'pick';
-    b.textContent = st.rerolls > 0 ? `Reroll team · ${st.rerolls} left` : 'No rerolls left';
-    b.disabled = !canReroll();
+    const bt = $('rerollBtn'), bd = $('rerollDecBtn');
+    if (!bt || !bd) return;
+    const rolled = !!(st.slot && st.rolls[st.slot]);
+    bt.hidden = bd.hidden = !rolled;
+    bt.textContent = st.rr.t > 0 ? `Reroll team \u00b7 ${st.rr.t} left` : 'No team rerolls left';
+    bd.textContent = st.rr.d > 0 ? `Reroll decade \u00b7 ${st.rr.d} left` : 'No decade rerolls left';
+    bt.disabled = !canTeam();
+    bd.disabled = !canDec();
+  }
+  function updateSubmit() {
+    const full = open().length === 0;
+    $('submitBtn').hidden = !full;
+    $('submitBtn').disabled = st.busy;
+    $('hint').textContent = st.slot ? ''
+      : full ? 'Lineup complete. Tap any position to swap a player or reroll it, or submit.'
+      : 'Tap a position on the board, then spin for it. You can go in any order.';
   }
 
   async function showTeam(team) {
@@ -439,8 +470,56 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     paintTeam(team);
   }
 
+  function paintDec(dec) {
+    const dr = $('decReel');
+    dr.innerHTML = reelHTML('Decade', dec, '');
+    dr.style.setProperty('--team', 'var(--panel2)');
+    dr.style.setProperty('--on-team', 'var(--ink)');
+    dr.style.setProperty('--team2', 'var(--gold)');
+    dr.classList.add('landed');
+  }
+  function blankReels() {
+    const tr = $('teamReel'), dr = $('decReel');
+    [tr, dr].forEach((e) => { e.classList.remove('landed', 'spinning'); e.removeAttribute('style'); });
+    tr.innerHTML = reelHTML('Team', '\u2014 \u2014 \u2014', '');
+    dr.innerHTML = reelHTML('Decade', '\u2014', '');
+  }
+  // Show whatever the selected slot currently holds: its roll and candidates, or empty reels.
+  function paintSlot() {
+    const slot = st.slot, roll = slot ? st.rolls[slot] : null;
+    if (roll) {
+      st.team = roll.team; st.dec = roll.dec; st.filter = 'ALL';
+      st.cands = candsFor(roll.team, roll.dec);
+      const mine = st.picks[slot];
+      st.sel = mine ? (st.cands.find((p) => p[0] === mine.name) || null) : null;
+      const tr = $('teamReel');
+      tr.removeAttribute('style');
+      tr.innerHTML = reelHTML('Team', roll.team.name, [roll.team.mascot, roll.team.conf].filter(Boolean).join(' \u00b7 '), true);
+      paintTeam(roll.team);
+      paintDec(roll.dec);
+      renderBoard();
+      renderPicker();
+    } else {
+      st.sel = null;
+      blankReels();
+      $('pickerHost').innerHTML = '';
+      $('dock').hidden = true;
+      renderBoard();
+    }
+    updateReroll();
+    updateSubmit();
+  }
+
+  function selectSlot(id) {
+    if (st.busy) return;
+    st.slot = id;
+    paintSlot();
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  }
+
   async function spin() {
-    if (st.busy || !st.slot) return;
+    if (st.busy || !st.slot || st.rolls[st.slot]) return;
+    const slot = st.slot;
     const av = availFn();
     const options = [];
     pool().forEach((t) => {
@@ -449,69 +528,87 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     });
     if (!options.length) return;
     st.busy = true;
-    st.confLocked = true;                // the conference is fixed from the first spin (the QB) on
+    st.confLocked = true;                // the conference is fixed from the first spin on
     $('confSel').disabled = true;
     $('confSel').title = 'The conference is locked once you start your roster.';
     let [team, ds] = rnd(options);
     let dec = rnd(ds);
-    if (chal && chal.s[st.slot] && chal.s[st.slot][0]) {         // replay the challenger's spin for this slot
-      const f = chal.s[st.slot][0];
+    if (chal && chal.s[slot] && chal.s[slot][0]) {         // replay the challenger's spin for this slot
+      const f = chal.s[slot][0];
       const o = options.find((x) => x[0].name === f[0] && x[1].includes(f[1]));
       if (o) { team = o[0]; dec = f[1]; }
     }
-    st.seq[st.slot] = [[team.name, dec]];
+    st.seq[slot] = [[team.name, dec, 's']];
     $('spinBtn').disabled = true;
     renderBoard();
     $('pickerHost').innerHTML = '';
-    const dr = $('decReel');
-    dr.classList.remove('landed');
-    dr.removeAttribute('style');
-    dr.innerHTML = reelHTML('Decade', '—', '');
+    $('decReel').classList.remove('landed');
+    $('decReel').removeAttribute('style');
+    $('decReel').innerHTML = reelHTML('Decade', '\u2014', '');
     await showTeam(team);
     if (!reduce) {
       await sleep(250);
-      await reelCycle(dr, 'Decade', DECS, 11);
+      await reelCycle($('decReel'), 'Decade', DECS, 11);
     }
-    dr.innerHTML = reelHTML('Decade', dec, '');
-    dr.style.setProperty('--team', 'var(--panel2)');
-    dr.style.setProperty('--on-team', 'var(--ink)');
-    dr.style.setProperty('--team2', 'var(--gold)');
-    dr.classList.add('landed');
-    st.team = team; st.dec = dec; st.filter = 'ALL'; st.sel = null; st.phase = 'pick';
-    st.cands = candsFor(team, dec);
+    st.rolls[slot] = { team, dec };
     st.busy = false;
     $('confSel').disabled = !!st.confLocked;
-    $('spinBtn').hidden = true;
-    renderBoard();
-    renderPicker();
-    updateReroll();
+    paintSlot();
   }
 
-  // Spend one reroll: new team, same decade.
+  // Replay helper: the challenger's step at this position, if it was the same kind of reroll.
+  const chalStep = (slot, kind) => {
+    if (!chal || !chal.s[slot]) return null;
+    const f = chal.s[slot][(st.seq[slot] || []).length];
+    return f && (f[2] || 't') === kind ? f : null;
+  };
+
+  // Team reroll: new team, same decade. Discards any player already drafted in this slot.
   async function rerollTeam() {
-    if (!canReroll()) return;
-    let team = rnd(pool().filter((t) => t !== st.team && candsFor(t, st.dec).length));
-    const sq = st.seq[st.slot] || (st.seq[st.slot] = []);
-    if (chal && chal.s[st.slot] && chal.s[st.slot][sq.length]) {  // follow the challenger's reroll sequence
-      const f = chal.s[st.slot][sq.length];
-      const o = pool().find((t) => t.name === f[0] && t !== st.team && candsFor(t, st.dec).length);
-      if (o && f[1] === st.dec) team = o;
+    if (!canTeam()) return;
+    const slot = st.slot, cur = st.rolls[slot];
+    let team = rnd(pool().filter((t) => t !== cur.team && candsFor(t, cur.dec).length));
+    const f = chalStep(slot, 't');
+    if (f && f[1] === cur.dec) {
+      const o = pool().find((t) => t.name === f[0] && t !== cur.team && candsFor(t, cur.dec).length);
+      if (o) team = o;
     }
-    sq.push([team.name, st.dec]);
-    st.rerolls -= 1;
+    (st.seq[slot] || (st.seq[slot] = [])).push([team.name, cur.dec, 't']);
+    st.rr.t -= 1;
     st.busy = true;
-    $('confSel').disabled = true;
+    delete st.picks[slot];
     st.sel = null;
     $('dock').hidden = true;
     $('pickerHost').innerHTML = '';
-    updateReroll();
+    renderBoard(); updateReroll(); updateSubmit();
     await showTeam(team);
-    st.team = team; st.filter = 'ALL';
-    st.cands = candsFor(team, st.dec);
+    st.rolls[slot] = { team, dec: cur.dec };
     st.busy = false;
-    $('confSel').disabled = !!st.confLocked;
-    renderPicker();
-    updateReroll();
+    paintSlot();
+  }
+
+  // Decade reroll: same team, different decade (only decades where the team has someone to draft).
+  async function rerollDec() {
+    if (!canDec()) return;
+    const slot = st.slot, cur = st.rolls[slot];
+    const decs = DECS.filter((d) => d !== cur.dec && candsFor(cur.team, d).length);
+    let dec = rnd(decs);
+    const f = chalStep(slot, 'd');
+    if (f && f[0] === cur.team.name && decs.includes(f[1])) dec = f[1];
+    (st.seq[slot] || (st.seq[slot] = [])).push([cur.team.name, dec, 'd']);
+    st.rr.d -= 1;
+    st.busy = true;
+    delete st.picks[slot];
+    st.sel = null;
+    $('dock').hidden = true;
+    $('pickerHost').innerHTML = '';
+    renderBoard(); updateReroll(); updateSubmit();
+    $('decReel').classList.remove('landed');
+    $('decReel').removeAttribute('style');
+    if (!reduce) await reelCycle($('decReel'), 'Decade', DECS, 11);
+    st.rolls[slot] = { team: cur.team, dec };
+    st.busy = false;
+    paintSlot();
   }
 
   function visible() {
@@ -550,27 +647,26 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
 
   function updateDock() {
     const dock = $('dock');
-    if (st.phase !== 'pick') { dock.hidden = true; return; }
+    if (!st.slot || !st.rolls[st.slot]) { dock.hidden = true; return; }
     dock.hidden = false;
-    const s = st.sel;
+    const s = st.sel, mine = st.picks[st.slot];
     $('dockInfo').innerHTML = s ? `<b>${esc(s[0])}</b><br>${posLabel(s[1])}${guru() ? '' : ` · rated ${s[3]}`}` : 'Tap a player to select';
-    $('draftBtn').disabled = !s;
+    $('draftBtn').textContent = mine ? 'Replace' : 'Draft';
+    $('draftBtn').disabled = !s || !!(mine && mine.name === s[0]);
   }
 
   function draft() {
     const s = st.sel;
-    if (!s) return;
-    const slot = SLOTS.find((x) => x.id === st.slot && !st.picks[x.id] && x.accepts.includes(s[1]));
-    if (!slot) return;
+    if (!s || !st.slot) return;
+    const slot = SLOTS.find((x) => x.id === st.slot && x.accepts.includes(s[1]));
+    if (!slot || !st.rolls[slot.id]) return;
     const c1 = colorOf(st.team.c1, '#243B5A');
     st.picks[slot.id] = { name: s[0], pos: s[1], season: s[2], r: s[3], line: s[4], team: st.team.name, dec: st.dec,
       c1, c2: colorOf(st.team.c2, c1),
       best: st.cands.find((p) => p[1] === s[1]) || s };
-    st.sel = null; st.phase = 'spin'; st.slot = null;
+    st.sel = null; st.slot = null;
     $('dock').hidden = true;
-    renderBoard();
-    if (open().length === 0) { renderFinal(); return; }
-    renderSpin();
+    paintSlot();
     window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
   }
 
