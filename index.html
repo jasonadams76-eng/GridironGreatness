@@ -176,7 +176,7 @@ input[type=text], input[type=tel] { flex: 1; min-width: 0; min-height: 44px; pad
       <path d="M30 1.5 L42 1.5 L36 11 Z" fill="#FFFFFF"/>
     </svg>
     <div class="word">
-      <h1><span>Gridiron <small class="ver" title="Version">v1.1</small></span><span>Greatness</span></h1>
+      <h1><span>Gridiron <small class="ver" title="Version">v1.2</small></span><span>Greatness</span></h1>
       <p class="tagline">Test your knowledge of college football over the last 25 years.</p>
     </div>
   </header>
@@ -231,8 +231,42 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
       s = String(s).trim().replace(/^.*#c=/, '').replace(/[^A-Za-z0-9_-]/g, '').replace(/-/g, '+').replace(/_/g, '/');
       while (s.length % 4) s += '=';
       const o = JSON.parse(decodeURIComponent(escape(atob(s))));
-      return o && o.v === 1 && o.s && Array.isArray(o.r) && o.r.length === 9 ? o : null;
+      if (!o || o.v !== 1 || !Array.isArray(o.r) || o.r.length !== 9) return null;
+      if (o.k === 'res') return Array.isArray(o.q) && o.q.length === 9 && typeof o.a === 'number' && typeof o.qa === 'number' ? o : null;
+      return o.s ? o : null;
     } catch (e) { return null; }
+  }
+  // Head-to-head card. a = the side shown as "you", b = the other side. Rows are [slotId, name, pos, season, rating, team, dec].
+  function h2hHTML(o) {
+    const diff = o.aA - o.bA, p = pWin(o.aA, o.bA);
+    const youView = o.aName === 'You';
+    const verdict = Math.abs(diff) < 0.05 ? 'A dead heat.' : diff > 0 ? (youView ? 'You win the roster battle.' : `${esc(o.aName)} wins the roster battle.`)
+      : (youView ? `${esc(o.bName)} wins the roster battle.` : `${esc(o.bName)} wins the roster battle.`);
+    const rows = SLOTS.map((x) => {
+      const a = o.aR.find((q) => q[0] === x.id), b = o.bR.find((q) => q[0] === x.id);
+      if (!a || !b) return '';
+      const d = a[4] - b[4];
+      return `<li><div class="row"><span class="who"><span class="nm">${esc(x.label)}</span>
+        <span class="meta">${esc(o.aName)}: <b>${esc(a[1])}</b> (${esc(a[5])} ${a[3]}) ${a[4]}</span>
+        <span class="meta">${esc(o.bName)}: <b>${esc(b[1])}</b> (${esc(b[5])} ${b[3]}) ${b[4]}</span></span>
+        <span class="wl ${d > 0 ? 'w' : d < 0 ? 'l' : 'bye'}">${d > 0 ? '+' + d : d < 0 ? d : 'Even'}</span></div></li>`;
+    }).join('');
+    const was = (n) => (n === 'You' ? 'You went' : esc(n) + ' went');
+    return `<section class="season" aria-label="Head to head"><h2>Head to head</h2>
+      <p><b>${verdict}</b></p>
+      <p class="note">Roster rating: ${esc(o.aName)} <b>${o.aA.toFixed(1)}</b>, ${esc(o.bName)} <b>${o.bA.toFixed(1)}</b>. In a single game ${youView ? 'you would' : esc(o.aName) + ' would'} win about <b>${Math.round(p * 100)}%</b> of the time.
+      ${o.aM && o.bM ? `${was(o.aName)} ${esc(o.aM)} (${esc(o.aZ)}). ${was(o.bName)} ${esc(o.bM)} (${esc(o.bZ)}).` : ''}</p>
+      <ul class="list final-list">${rows}</ul></section>`;
+  }
+  // The challenger opens a result link from their friend: show both teams, then offer a new game.
+  function showReply(o) {
+    chal = null; level = 'guru';
+    $('progress').innerHTML = '';
+    $('stage').innerHTML = `<div class="final"><div class="score"><span class="big">Results</span><span class="tag">${esc(o.n || 'Your friend')} played your challenge</span></div>
+      ${h2hHTML({ aName: o.qn || 'You', aA: o.qa, aM: o.qm, aZ: o.qz, aR: o.q, bName: o.n || 'Your friend', bA: o.a, bM: o.m, bZ: o.z, bR: o.r })}
+      <div class="final-actions"><button class="primary" id="again" type="button">Play a new game</button></div></div>`;
+    $('again').onclick = () => { try { history.replaceState(null, '', location.href.split('#')[0]); } catch (e) {} start(); };
+    window.scrollTo({ top: 0 });
   }
   function acceptChallenge(o) {
     chal = o; level = 'guru'; conf = o.c || 'ALL';
@@ -323,7 +357,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     const stage = $('stage');
     const cb = chal ? `<section class="season" aria-label="Challenge"><h2>Challenge${chal.n ? ' from ' + esc(chal.n) : ''}</h2>
       <p class="note">Same teams and decades as the ones ${chal.n ? esc(chal.n) + ' was' : 'your friend was'} dealt, Guru level, ${chal.c && chal.c !== 'ALL' ? esc(chal.c) + ' only' : 'all conferences'}. Draft your own players. At the end your team is compared to theirs.</p></section>`
-      : (guru() && Object.keys(st.picks).length === 0 ? `<details class="chalin"><summary>Have a challenge code?</summary>
+      : (Object.keys(st.picks).length === 0 ? `<details class="chalin"><summary>Have a challenge code?</summary>
       <div class="confbar"><input id="chCode" type="text" placeholder="Paste the code or link" aria-label="Challenge code"><button class="ghost" id="chGo" type="button">Start</button></div>
       <p class="note" id="chErr"></p></details>` : '');
     stage.innerHTML = cb + `<div class="confbar"><label>Level</label>
@@ -351,6 +385,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     if ($('chGo')) $('chGo').onclick = () => {
       const o = b64d($('chCode').value);
       if (!o) { $('chErr').textContent = 'That code did not work. Check that you pasted all of it.'; return; }
+      if (o.k === 'res') { showReply(o); return; }
       acceptChallenge(o); start();
     };
   }
@@ -603,28 +638,19 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
       : s.stage === 'Bowl game' ? '<h2>Bowl game</h2><p class="note">Bowl eligible with six or more wins.</p>'
       : '<h2>Postseason</h2><p class="note">Six wins are needed for a bowl game.</p>';
     // head-to-head against the challenger (friend mode)
-    let vs = '';
-    if (chal) {
-      const p = pWin(avg, chal.a);
-      const diff = avg - chal.a;
-      const nm = chal.n || 'Your friend';
-      const verdict = Math.abs(diff) < 0.05 ? 'A dead heat.' : diff > 0 ? 'You win the roster battle.' : `${esc(nm)} wins the roster battle.`;
-      const rows = SLOTS.map((x) => {
-        const mine = st.picks[x.id], th = chal.r.find((q) => q[0] === x.id);
-        if (!th) return '';
-        const d = mine.r - th[4];
-        return `<li><div class="row"><span class="who"><span class="nm">${posLabel(x.id === 'DST' ? 'DST' : x.label)}</span>
-          <span class="meta">You: <b>${esc(mine.name)}</b> (${esc(mine.team)} ${mine.season}) ${mine.r}</span>
-          <span class="meta">${esc(nm)}: <b>${esc(th[1])}</b> (${esc(th[5])} ${th[3]}) ${th[4]}</span></span>
-          <span class="wl ${d > 0 ? 'w' : d < 0 ? 'l' : 'bye'}">${d > 0 ? '+' + d : d < 0 ? d : 'Even'}</span></div></li>`;
-      }).join('');
-      vs = `<section class="season" aria-label="Head to head"><h2>Head to head</h2>
-        <p><b>${verdict}</b></p>
-        <p class="note">Roster rating: you <b>${avg.toFixed(1)}</b>, ${esc(nm)} <b>${chal.a.toFixed(1)}</b>. In a single game you would win about <b>${Math.round(p * 100)}%</b> of the time.
-        ${chal.m ? `${esc(nm)} went ${esc(chal.m)} (${esc(chal.z)}). You went ${rec} (${esc(s.result)}).` : ''}</p>
-        <ul class="list final-list">${rows}</ul></section>`;
-    }
-    const sendCard = guru() ? `<section class="season" aria-label="Challenge a friend"><h2>Challenge a friend</h2>
+    const myRows = SLOTS.map((x) => { const k = st.picks[x.id]; return [x.id, k.name, k.pos, k.season, k.r, k.team, k.dec]; });
+    const vs = chal ? h2hHTML({ aName: 'You', aA: avg, aM: rec, aZ: s.result, aR: myRows,
+      bName: chal.n || 'Your friend', bA: chal.a, bM: chal.m, bZ: chal.z, bR: chal.r }) : '';
+    const replyCard = chal ? `<section class="season" aria-label="Send result back"><h2>Send your result back</h2>
+        <p class="note">${esc(chal.n || 'Your friend')} will get a link that opens the head-to-head between your teams. The text opens in your Messages app and you tap send.</p>
+        <div class="confbar"><input id="rpName" type="text" placeholder="Your name (optional)" maxlength="20" aria-label="Your name"></div>
+        <div class="confbar"><input id="rpPhone" type="tel" inputmode="tel" placeholder="Their phone number (optional)" aria-label="Their phone number"><button class="ghost" id="rpPick" type="button" hidden>Contacts</button></div>
+        <div class="final-actions"><button class="primary" id="rpSms" type="button">Text my result</button>
+        <button class="ghost" id="rpShare" type="button" hidden>Share…</button>
+        <button class="ghost" id="rpCopy" type="button">Copy link</button>
+        <button class="ghost" id="rpCode" type="button">Copy code</button></div>
+        <p class="note" id="rpMsg"></p></section>` : '';
+    const sendCard = guru() && !chal ? `<section class="season" aria-label="Challenge a friend"><h2>Challenge a friend</h2>
         <p class="note">Your friend gets the same teams and decades you were dealt, in Guru mode. When they finish, their team is compared with yours. The text opens in your Messages app and you tap send. Leave the number blank to choose the contact in Messages. Phone numbers are never saved.</p>
         <div class="confbar"><input id="chName" type="text" placeholder="Your name (optional)" maxlength="20" aria-label="Your name"></div>
         <div class="confbar"><input id="chPhone" type="tel" inputmode="tel" placeholder="Friend's phone number (optional)" aria-label="Friend's phone number"><button class="ghost" id="chPick" type="button" hidden>Contacts</button></div>
@@ -636,7 +662,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     $('stage').innerHTML = `<div class="final">
       <div class="score"><span class="big">${rec}</span><span class="tag${s.champ ? ' champ' : ''}">${esc(s.result)}</span></div>
       <p class="note">${guru() ? 'Guru level. ' : ''}Roster rating <b>${avg.toFixed(1)}</b>. A player's rating scores his best season with that team and decade against starters at the same position. A defense is rated against every team's defense that season. An average is around 68 and the best reach the 90s. Power conference teams and NFL draft talent are rated higher, which brings the rest down a little.</p>
-      ${vs}${sendCard}
+      ${vs}${replyCard}${sendCard}
       ${guru() ? `<section class="season" aria-label="Best available"><h2>Best available</h2>
         <p class="note">Taking the top-rated player at each position on every spin would have given a roster rating of <b>${bestAvg.toFixed(1)}</b>, against your <b>${avg.toFixed(1)}</b>. The line under each player shows who that was.</p></section>` : ''}
       <section class="season" aria-label="Regular season">
@@ -656,7 +682,38 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
       if (chal) { chal = null; try { history.replaceState(null, '', location.href.split('#')[0]); } catch (e) {} }
       start();
     };
-    if (guru()) {
+    if (chal) {
+      const rp = () => b64e({ v: 1, k: 'res', n: ($('rpName').value || '').trim().slice(0, 20), a: +avg.toFixed(2), m: rec, z: s.result, r: myRows,
+        qn: chal.n || '', qa: chal.a, qm: chal.m || '', qz: chal.z || '', q: chal.r });
+      const rlink = () => location.href.split('#')[0] + '#c=' + rp();
+      const rsay = (m) => { $('rpMsg').textContent = m; };
+      const rtxt = (who) => `${who ? who + ' finished' : 'I finished'} your Gridiron Greatness challenge. Tap to see how our teams compare:`;
+      const rcopy = async (txt, ok) => { try { await navigator.clipboard.writeText(txt); rsay(ok); } catch (e) { rsay('Copy is not available here.'); } };
+      $('rpCopy').onclick = () => rcopy(rlink(), 'Link copied.');
+      $('rpCode').onclick = () => rcopy(rp(), 'Code copied. They can paste it under "Have a challenge code?" on the start screen.');
+      if (navigator.share) {
+        $('rpShare').hidden = false;
+        $('rpShare').onclick = async () => {
+          try { await navigator.share({ title: 'Gridiron Greatness result', text: rtxt(($('rpName').value || '').trim()), url: rlink() }); }
+          catch (e) { if (e && e.name !== 'AbortError') rsay('Sharing is not available here. Use Copy link instead.'); }
+        };
+      }
+      if (navigator.contacts && navigator.contacts.select && window.isSecureContext && window.top === window) {
+        $('rpPick').hidden = false;
+        $('rpPick').onclick = async () => {
+          try { const r = await navigator.contacts.select(['tel'], { multiple: false }); if (r && r[0] && r[0].tel && r[0].tel[0]) $('rpPhone').value = r[0].tel[0]; }
+          catch (e) { rsay('Could not open your contacts. Type the number or leave it blank.'); }
+        };
+      }
+      $('rpSms').onclick = () => {
+        const num = ($('rpPhone').value || '').replace(/[^\d+]/g, '');
+        if (num && num.replace(/\D/g, '').length < 7) { rsay('That phone number looks too short. Fix it or leave it blank.'); return; }
+        const ios = /iP(hone|ad|od)/.test(navigator.userAgent);
+        location.href = `sms:${num}${ios ? '&' : '?'}body=${encodeURIComponent(rtxt(($('rpName').value || '').trim()) + ' ' + rlink())}`;
+        rsay('Opening your Messages app. Tap send there.');
+      };
+    }
+    if (guru() && !chal) {
       const payload = () => b64e({ v: 1, c: conf, n: ($('chName').value || '').trim().slice(0, 20), a: +avg.toFixed(2), m: rec, z: s.result,
         s: Object.fromEntries(SLOTS.map((x) => [x.id, st.seq[x.id] || []])),
         r: SLOTS.map((x) => { const k = st.picks[x.id]; return [x.id, k.name, k.pos, k.season, k.r, k.team, k.dec]; }) });
@@ -706,6 +763,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   $('draftBtn').onclick = draft;
   try {
     const o = /#c=/.test(location.hash) ? b64d(location.hash) : null;
+    if (o && o.k === 'res') { start(); showReply(o); return; }
     if (o) acceptChallenge(o);
   } catch (e) {}
   start();
