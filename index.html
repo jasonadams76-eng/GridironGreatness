@@ -36,6 +36,7 @@ h1 { margin: 0; font-family: var(--display); font-weight: 900; text-transform: u
      letter-spacing: .01em; font-size: clamp(1.9rem, 9.5vw, 2.9rem); }
 h1 span { display: block; white-space: nowrap; }
 h1 i { font-style: normal; color: var(--gold); }
+.ver { font-family: system-ui, sans-serif; font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: none; color: var(--muted); vertical-align: top; position: relative; top: .35em; margin-left: 4px; }
 .tagline { margin: 8px 0 0; text-wrap: balance; font-size: .82rem; color: var(--muted); letter-spacing: .02em; }
 
 .yard { position: relative; display: flex; align-items: center; justify-content: flex-end; height: 24px; }
@@ -175,7 +176,7 @@ input[type=text], input[type=tel] { flex: 1; min-width: 0; min-height: 44px; pad
       <path d="M30 1.5 L42 1.5 L36 11 Z" fill="#FFFFFF"/>
     </svg>
     <div class="word">
-      <h1><span>Gridiron</span><span>Greatness</span></h1>
+      <h1><span>Gridiron <small class="ver" title="Version">v1.1</small></span><span>Greatness</span></h1>
       <p class="tagline">Test your knowledge of college football over the last 25 years.</p>
     </div>
   </header>
