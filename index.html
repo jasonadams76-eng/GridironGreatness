@@ -1,4 +1,17 @@
 <title>Gridiron Greatness</title>
+<meta name="description" content="Spin a team and a decade, draft your lineup, and see how your season plays out. Test your knowledge of college football over the last 25 years.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Gridiron Greatness">
+<meta property="og:title" content="Gridiron Greatness: you've been challenged">
+<meta property="og:description" content="Same teams, same decades. Build your best college football lineup and see who wins.">
+<meta property="og:url" content="https://jasonadams76-eng.github.io/GridironGreatness/">
+<meta property="og:image" content="https://jasonadams76-eng.github.io/GridironGreatness/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Gridiron Greatness: you've been challenged">
+<meta name="twitter:description" content="Same teams, same decades. Build your best college football lineup and see who wins.">
+<meta name="twitter:image" content="https://jasonadams76-eng.github.io/GridironGreatness/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800;900&display=swap" rel="stylesheet">
@@ -186,7 +199,7 @@ input[type=text], input[type=tel] { flex: 1; min-width: 0; min-height: 44px; pad
       <path d="M30 1.5 L42 1.5 L36 11 Z" fill="#FFFFFF"/>
     </svg>
     <div class="word">
-      <h1><span>Gridiron <small class="ver" title="Version">v1.5.1</small></span><span>Greatness</span></h1>
+      <h1><span>Gridiron <small class="ver" title="Version">v1.6</small></span><span>Greatness</span></h1>
       <p class="tagline">Test your knowledge of college football over the last 25 years.</p>
     </div>
   </header>
@@ -235,17 +248,130 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
   // ---- Challenge a Friend ----
   // A challenge is a small code: conference, the team+decade landed for every slot (including rerolls), and the sender's roster.
   let chal = null;
-  const b64e = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  // ---- compact challenge links ----
+  // A link carries team/decade/player NUMBERS from the game's own data (about 100-250 characters) instead of names.
+  // A 16-bit tag of the data guards against links made with a different build of the player data.
+  const RESULTS = ['National champions', 'Lost in the first round', 'Lost in the quarterfinal', 'Lost in the semifinal',
+    'Lost in the national championship game', 'Won their bowl game', 'Lost their bowl game', 'Missed a bowl game'];
+  let _tag = null, decodeErr = '';
+  function dataTag() {
+    if (_tag !== null) return _tag;
+    let h = 0x811c9dc5;
+    const mix = (s) => { for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } h ^= 0xff; h = Math.imul(h, 0x01000193); };
+    TEAMS.forEach((tm) => { mix(tm.name); DECS.forEach((d) => (tm.d[d] || []).forEach((q) => { mix(q[0]); mix(q[1]); mix(String(q[2])); mix(String(q[3])); })); });
+    return (_tag = ((h >>> 16) ^ (h & 0xffff)) & 0xffff);
+  }
+  const toB64 = (bytes) => btoa(String.fromCharCode.apply(null, bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const fromB64 = (s) => {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    const bin = atob(s), out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  };
+  const rowRef = (r) => {
+    const ti = TEAMS.findIndex((tm) => tm.name === r[5]), di = DECS.indexOf(r[6]);
+    if (ti < 0 || di < 0) throw new Error('team');
+    const pi = (TEAMS[ti].d[r[6]] || []).findIndex((q) => q[0] === r[1] && q[1] === r[2] && q[2] === r[3]);
+    if (pi < 0 || pi > 255) throw new Error('player');
+    return [ti, di, pi];
+  };
+  const rowFrom = (slot, ti, di, pi) => {
+    const tm = TEAMS[ti], q = tm && tm.d[DECS[di]] && tm.d[DECS[di]][pi];
+    if (!q) throw new Error('bad ref');
+    return [slot.id, q[0], q[1], q[2], q[3], tm.name, DECS[di]];
+  };
+  const avgOf = (rows) => +(SLOTS.reduce((a, s, i) => a + rows[i][4] * (s.w || 1), 0) / SLOTS.reduce((a, s) => a + (s.w || 1), 0)).toFixed(2);
+  const nums = (m) => { const x = /(\d+)\D+(\d+)/.exec(m || ''); return x ? [+x[1], +x[2]] : [0, 0]; };
+  function packChal(o) {
+    const enc = new TextEncoder(), B = [];
+    const tag = dataTag();
+    const str = (s) => { const u = enc.encode(String(s || '').slice(0, 20)); B.push(u.length, ...u); };
+    const outcome = (m, z) => { const [w, l] = nums(m); const ri = RESULTS.indexOf(z); B.push(w, l, ri < 0 ? 255 : ri); };
+    const refs = (rows) => rows.map(rowRef);
+    if (o.k === 'res') {
+      B.push(3, tag >> 8, tag & 255);
+      str(o.n); outcome(o.m, o.z);
+      SLOTS.forEach((s, i) => { const [ti, di, pi] = rowRef(o.r[i]); B.push(ti, di, pi); });
+      str(o.qn); outcome(o.qm, o.qz);
+      SLOTS.forEach((s, i) => { const [ti, di, pi] = rowRef(o.q[i]); B.push(ti, di, pi); });
+    } else {
+      const ci = o.c === 'ALL' ? 0 : o.c === 'POWER' ? 1 : o.c === 'NONPOWER' ? 2 : 3 + CONFS.indexOf(o.c);
+      if (ci < 0 || (ci >= 3 && CONFS.indexOf(o.c) < 0)) throw new Error('conf');
+      B.push(2, tag >> 8, tag & 255, ci);
+      str(o.n); outcome(o.m, o.z);
+      const rf = refs(o.r);
+      SLOTS.forEach((s, i) => {
+        const sq = o.s[s.id] || [];
+        if (!sq.length) throw new Error('seq');
+        B.push(sq.length);
+        sq.forEach((st2) => {
+          const ti = TEAMS.findIndex((tm) => tm.name === st2[0]), di = DECS.indexOf(st2[1]), kd = ['s', 't', 'd'].indexOf(st2[2] || 't');
+          if (ti < 0 || di < 0 || kd < 0) throw new Error('step');
+          B.push(ti, kd * 4 + di);
+        });
+        const last = sq[sq.length - 1];
+        if (last[0] !== o.r[i][5] || last[1] !== o.r[i][6]) throw new Error('last step');
+      });
+      rf.forEach((r) => B.push(r[2]));
+    }
+    if (B.some((x) => x > 255 || x < 0)) throw new Error('range');
+    return toB64(Uint8Array.from(B));
+  }
+  function unpackChal(bytes) {
+    const dec = new TextDecoder();
+    let k = 0;
+    const u8 = () => { if (k >= bytes.length) throw new Error('short'); return bytes[k++]; };
+    const kind = u8();
+    if ((u8() << 8 | u8()) !== dataTag()) { decodeErr = 'version'; return null; }
+    const str = () => { const n = u8(); const s = dec.decode(bytes.slice(k, k + n)); k += n; return s; };
+    const outcome = () => { const w = u8(), l = u8(), ri = u8(); return [`${w}–${l}`, RESULTS[ri] || '']; };
+    if (kind === 3) {
+      const n = str(), [m, z] = outcome();
+      const r = SLOTS.map((s) => rowFrom(s, u8(), u8(), u8()));
+      const qn = str(), [qm, qz] = outcome();
+      const q = SLOTS.map((s) => rowFrom(s, u8(), u8(), u8()));
+      return { v: 1, k: 'res', n, a: avgOf(r), m, z, r, qn, qa: avgOf(q), qm, qz, q };
+    }
+    if (kind !== 2) return null;
+    const ci = u8();
+    const c = ci === 0 ? 'ALL' : ci === 1 ? 'POWER' : ci === 2 ? 'NONPOWER' : CONFS[ci - 3];
+    if (!c) throw new Error('conf');
+    const n = str(), [m, z] = outcome();
+    const s = {}, lastRef = [];
+    SLOTS.forEach((sl) => {
+      const cnt = u8(), seq = [];
+      for (let i = 0; i < cnt; i++) {
+        const ti = u8(), kd = u8(), tm = TEAMS[ti];
+        if (!tm) throw new Error('team');
+        seq.push([tm.name, DECS[kd & 3], ['s', 't', 'd'][kd >> 2]]);
+        lastRef[sl.id] = [ti, kd & 3];
+      }
+      s[sl.id] = seq;
+    });
+    const r = SLOTS.map((sl) => rowFrom(sl, lastRef[sl.id][0], lastRef[sl.id][1], u8()));
+    return { v: 1, c, n, a: avgOf(r), m, z, s, r };
+  }
+  // Old-style links (the full roster as text) are still understood.
+  const legacyE = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  function b64e(o) { try { return packChal(o); } catch (e) { return legacyE(o); } }
   function b64d(s) {
+    decodeErr = '';
     try {
-      s = String(s).trim().replace(/^.*#c=/, '').replace(/[^A-Za-z0-9_-]/g, '').replace(/-/g, '+').replace(/_/g, '/');
-      while (s.length % 4) s += '=';
-      const o = JSON.parse(decodeURIComponent(escape(atob(s))));
+      s = String(s).trim().replace(/^.*#c=/, '').replace(/[^A-Za-z0-9_-]/g, '');
+      const bytes = fromB64(s);
+      if (bytes[0] === 2 || bytes[0] === 3) return unpackChal(bytes);
+      let s2 = s.replace(/-/g, '+').replace(/_/g, '/');
+      while (s2.length % 4) s2 += '=';
+      const o = JSON.parse(decodeURIComponent(escape(atob(s2))));
       if (!o || o.v !== 1 || !Array.isArray(o.r) || o.r.length !== 9) return null;
       if (o.k === 'res') return Array.isArray(o.q) && o.q.length === 9 && typeof o.a === 'number' && typeof o.qa === 'number' ? o : null;
       return o.s ? o : null;
     } catch (e) { return null; }
   }
+  const decodeMsg = () => (decodeErr === 'version'
+    ? 'That challenge was made with a different version of the game data, so it cannot be opened. Ask your friend to send a new one.'
+    : 'That code did not work. Check that you pasted all of it.');
   // Head-to-head card. a = the side shown as "you", b = the other side. Rows are [slotId, name, pos, season, rating, team, dec].
   function h2hHTML(o) {
     const diff = o.aA - o.bA, p = pWin(o.aA, o.bA);
@@ -403,7 +529,7 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     $('submitBtn').onclick = () => { if (open().length === 0 && !st.busy) renderFinal(); };
     if ($('chGo')) $('chGo').onclick = () => {
       const o = b64d($('chCode').value);
-      if (!o) { $('chErr').textContent = 'That code did not work. Check that you pasted all of it.'; return; }
+      if (!o) { $('chErr').textContent = decodeMsg(); return; }
       if (o.k === 'res') { showReply(o); return; }
       acceptChallenge(o); start();
     };
@@ -865,6 +991,11 @@ const DATA = {"teams":[{"name":"Air Force","abbr":"AF","mascot":"Falcons","conf"
     const o = /#c=/.test(location.hash) ? b64d(location.hash) : null;
     if (o && o.k === 'res') { start(); showReply(o); return; }
     if (o) acceptChallenge(o);
+    else if (/#c=/.test(location.hash)) {
+      start();
+      $('stage').insertAdjacentHTML('afterbegin', `<p class="note">${esc(decodeMsg())}</p>`);
+      return;
+    }
   } catch (e) {}
   start();
 })();
